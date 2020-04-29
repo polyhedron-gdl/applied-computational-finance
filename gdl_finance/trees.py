@@ -8,6 +8,65 @@ import numpy                     as np
 #
 #------------------------------------------------------------------------------------- 
 #
+def binomial_model_european(N, S0, sigma, r, K, Maturity, opt_type = 'put'):
+    """
+    N      = number of binomial levels
+    S0     = initial stock price
+    sigma  = factor change of upstate
+    r      = risk free interest rate per annum
+    K      = strike price
+    """
+    if S0 < 0 or N < 0 or sigma < 0 or K < 0 or Maturity < 0 or opt_type not in ['call','put']: 
+        raise ValueError('Negative value in input!')
+    if type(N) not in [int]:
+        raise TypeError('The number of levels must be an non-negative integer number!')
+
+    try:
+        delta_t     = Maturity/float(N)
+        discount    = np.exp(-r*delta_t)
+        #
+        # u and d values are chosen according to the CRR model
+        #
+        u = np.exp(sigma*np.sqrt(delta_t))
+        d = 1 / u
+        p = (np.exp(r*delta_t)- d) / (u - d)
+        q = 1 - p
+        #
+        # make stock price tree
+        # 
+        stock = np.zeros([N + 1, N + 1])
+        for i in range(N + 1):
+            for j in range(i + 1):
+                stock[j, i] = S0 * (u ** (i - j)) * (d ** j)
+        #
+        # Initialize option matrix 
+        #
+        option = np.zeros([N + 1, N + 1])
+        # 
+        # Generate option prices recursively
+        #
+        #
+        # We start from the maturity (the binomial tree is a backward 
+        # in time algorithm remember?). At maturity we know the value 
+        # of the option in all states, it is simply the payoff. In this
+        # case the payoff is that of a put option.
+        #
+        if opt_type == 'put':
+            option[:, N] = np.maximum(np.zeros(N + 1), (K - stock[:, N]))
+        else:
+            option[:, N] = np.maximum(np.zeros(N + 1), (stock[:, N]) - K)
+            
+        for i in range(N - 1, -1, -1):
+            for j in range(0, i + 1):
+                option[j, i] = (
+                    discount * (p * option[j, i + 1] + q * option[j + 1, i + 1])
+                )
+        return [stock, option]
+    except:
+        return []
+#
+#------------------------------------------------------------------------------------- 
+#
 def random_tree(b, labels, nlevel = 2):
     if b < 10:
         plt.figure(figsize=[10, 10])
@@ -58,6 +117,53 @@ def random_tree(b, labels, nlevel = 2):
 
         plt.grid(True)
         plt.show()
+#
+#------------------------------------------------------------------------------------- 
+#
+def binomial_model_american(N, S0, sigma, r, K, Maturity, opt_type = 'put'):
+    """
+    N      = number of binomial iterations
+    S0     = initial stock price
+    sigma  = factor change of upstate
+    r      = risk free interest rate per annum
+    K      = strike price
+    """
+    delta_t     = Maturity/float(N)
+    discount    = np.exp(-r*delta_t)
+    u           = np.exp(sigma*np.sqrt(delta_t))
+    d           = 1 / u
+    p           = (np.exp(r*delta_t)- d) / (u - d)
+    q           = 1 - p
+
+    # make stock price tree
+    stock = np.zeros([N + 1, N + 1])
+    for i in range(N + 1):
+        for j in range(i + 1):
+            stock[j, i] = S0 * (u ** (i - j)) * (d ** j)
+
+    # Generate option prices recursively
+    option = np.zeros([N + 1, N + 1])
+    if opt_type  == 'put':
+        option[:, N] = np.maximum(np.zeros(N + 1), (K - stock[:, N]))
+    else:
+        option[:, N] = np.maximum(np.zeros(N + 1), (stock[:, N]) - K)
+        
+    for i in range(N - 1, -1, -1):
+        for j in range(0, i + 1):
+            option[j, i] = (
+                discount * (p * option[j, i + 1] + q * option[j + 1, i + 1])
+            )
+            #
+            # dealing with early exercise
+            #
+            if opt_type == 'put':
+                exercise     = np.maximum(0, K - stock[j, i])  
+            else:
+                exercise     = np.maximum(0, stock[j, i] - K)
+                
+            option[j, i] = np.maximum(exercise, option[j, i])
+
+    return [stock, option]
 #
 #------------------------------------------------------------------------------------- 
 #
